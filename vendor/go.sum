@@ -1,0 +1,12 @@
+github.com/beorn7/perks v0.0.0-20160804104726-4c0e84591b9a/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
+github.com/ceph/go-ceph v0.0.0-20170120174755-25b1a318b387 h1:68L0vDv8xWrS5BNPHYuLCOK/ZPZ99dJ6ioL+EZGchZY=
+github.com/ceph/go-ceph v0.0.0-20170120174755-25b1a318b387/go.mod h1:DhWkbjUxN0QRc0xQvpI9QhzqQSzYysRuZVcqSfiStds=
+github.com/golang/protobuf v0.0.0-20170331031902-2bba0603135d/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
+github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
+github.com/prometheus/client_golang v0.0.0-20170921105543-353b8c3f3776/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
+github.com/prometheus/client_golang v0.0.0-pre1.0.20170921105543-353b8c3f3776/go.mod h1:7SWBe2y4D6OKWSNQJUaRYU/AaXPKyh/dDVn+NZz0KFw=
+github.com/prometheus/client_model v0.0.0-20170216185247-6f3806018612/go.mod h1:MbSGuTsp3dbXC40dX6PRTWyKYBIrTGTE9sqQNg2J8bo=
+github.com/prometheus/common v0.0.0-20170427095455-13ba4ddd0caa/go.mod h1:daVV7qP5qjZbuso7PdcryaAu0sAZbrN9i7WWcTMWvro=
+github.com/prometheus/procfs v0.0.0-20170424204552-6ac8c5d890d4/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
+gopkg.in/yaml.v2 v2.0.0-20170407172122-cd8b52f8269e h1:o/mfNjxpTLivuKEfxzzwrJ8PmulH2wEp7t713uMwKAA=
+gopkg.in/yaml.v2 v2.0.0-20170407172122-cd8b52f8269e/go.mod h1:JAlM8MvJe8wmxCU4Bli9HhUf9+ttbYbLASfIpnQbh74=
