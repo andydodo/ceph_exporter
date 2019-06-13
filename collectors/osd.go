@@ -79,15 +79,6 @@ type OSDCollector struct {
 	// OSDUp displays the Up state of the OSD
 	OSDUp *prometheus.GaugeVec
 
-	// OSDFull flags if an osd is full
-	OSDFull *prometheus.GaugeVec
-
-	// OSDNearfull flags if an osd is near full
-	OSDNearFull *prometheus.GaugeVec
-
-	// OSDBackfillFull flags if an osd is backfill full
-	OSDBackfillFull *prometheus.GaugeVec
-
 	// OSDDownDesc displays OSDs present in the cluster in "down" state
 	OSDDownDesc *prometheus.Desc
 
@@ -282,41 +273,11 @@ func NewOSDCollector(conn Conn, cluster string) *OSDCollector {
 			},
 			[]string{"osd"},
 		),
-
-		OSDFull: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace:   cephNamespace,
-				Name:        "osd_full",
-				Help:        "OSD Full Status",
-				ConstLabels: labels,
-			},
-			[]string{"osd"},
-		),
-
-		OSDNearFull: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace:   cephNamespace,
-				Name:        "osd_near_full",
-				Help:        "OSD Near Full Status",
-				ConstLabels: labels,
-			},
-			[]string{"osd"},
-		),
-
-		OSDBackfillFull: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Namespace:   cephNamespace,
-				Name:        "osd_backfill_full",
-				Help:        "OSD Backfill Full Status",
-				ConstLabels: labels,
-			},
-			[]string{"osd"},
-		),
-
 		OSDDownDesc: prometheus.NewDesc(
 			fmt.Sprintf("%s_osd_down", cephNamespace),
 			"No. of OSDs down in the cluster",
-			[]string{"osd", "status"},
+			//Todo: use for find osd.0 -> hostname add by andy
+			[]string{"hostname", "osd", "status"},
 			labels,
 		),
 		ScrubbingStateDesc: prometheus.NewDesc(
@@ -347,9 +308,6 @@ func (o *OSDCollector) collectorList() []prometheus.Collector {
 		o.ApplyLatency,
 		o.OSDIn,
 		o.OSDUp,
-		o.OSDFull,
-		o.OSDNearFull,
-		o.OSDBackfillFull,
 	}
 }
 
@@ -387,10 +345,9 @@ type cephPerfStat struct {
 
 type cephOSDDump struct {
 	OSDs []struct {
-		OSD   json.Number `json:"osd"`
-		Up    json.Number `json:"up"`
-		In    json.Number `json:"in"`
-		State []string    `json:"state"`
+		OSD json.Number `json:"osd"`
+		Up  json.Number `json:"up"`
+		In  json.Number `json:"in"`
 	} `json:"osds"`
 }
 
@@ -407,6 +364,19 @@ type cephOSDTreeDown struct {
 		Type   string `json:"type"`
 		Status string `json:"status"`
 	} `json:"stray"`
+}
+
+//Todo: add by andy
+type cephOSDFindName struct {
+	Osd           int64         `json:"osd"`
+	IP            string        `json:"ip"`
+	OsdFsid       string        `json:"osd_fsid"`
+	CrushLocation CrushLocation `json:"crush_location"`
+}
+
+type CrushLocation struct {
+	Host string `json:"host"`
+	Root string `json:"root"`
 }
 
 func (o *OSDCollector) collectOSDDF() error {
@@ -582,9 +552,22 @@ func (o *OSDCollector) collectOSDTreeDown(ch chan<- prometheus.Metric) error {
 			continue
 		}
 
+		//
+		osdFindCmd := o.cephOSDFindCommand(downItem.ID)
+		datas, _, err := o.conn.MonCommand(osdFindCmd)
+		if err != nil {
+			log.Println("[ERROR] Unable to collect data from ceph osd find id", err)
+			return err
+		}
+		osdFind := &cephOSDFindName{}
+		if err := json.Unmarshal(datas, osdFind); err != nil {
+			return err
+		}
+		hostName := strings.Split(osdFind.IP, ":")
+
 		osdName := downItem.Name
 
-		ch <- prometheus.MustNewConstMetric(o.OSDDownDesc, prometheus.GaugeValue, 1, osdName, downItem.Status)
+		ch <- prometheus.MustNewConstMetric(o.OSDDownDesc, prometheus.GaugeValue, 1, hostName[0], osdName, downItem.Status)
 	}
 
 	return nil
@@ -623,20 +606,6 @@ func (o *OSDCollector) collectOSDDump() error {
 		}
 
 		o.OSDUp.WithLabelValues(osdName).Set(up)
-
-		o.OSDFull.WithLabelValues(osdName).Set(0)
-		o.OSDNearFull.WithLabelValues(osdName).Set(0)
-		o.OSDBackfillFull.WithLabelValues(osdName).Set(0)
-		for _, state := range dumpInfo.State {
-			switch state {
-			case "full":
-				o.OSDFull.WithLabelValues(osdName).Set(1)
-			case "nearfull":
-				o.OSDNearFull.WithLabelValues(osdName).Set(1)
-			case "backfillfull":
-				o.OSDBackfillFull.WithLabelValues(osdName).Set(1)
-			}
-		}
 	}
 
 	return nil
@@ -724,6 +693,19 @@ func (o *OSDCollector) cephOSDTreeCommand(states ...string) []byte {
 	cmd, err := json.Marshal(map[string]interface{}{
 		"prefix": "osd tree",
 		"states": states,
+		"format": "json",
+	})
+	if err != nil {
+		panic(err)
+	}
+	return cmd
+}
+
+//Todo: use for find osd.0 -> hostname add by andy
+func (o *OSDCollector) cephOSDFindCommand(id int64) []byte {
+	cmd, err := json.Marshal(map[string]interface{}{
+		"prefix": "osd find",
+		"id":     id,
 		"format": "json",
 	})
 	if err != nil {

@@ -79,12 +79,11 @@ var _ prometheus.Collector = &CephExporter{}
 // NewCephExporter creates an instance to CephExporter and returns a reference
 // to it. We can choose to enable a collector to extract stats out of by adding
 // it to the list of collectors.
-func NewCephExporter(conn *rados.Conn, cluster string, config string, rgwMode int) *CephExporter {
+func NewCephExporter(conn *rados.Conn, cluster string, config string, rgwMode, mdsMode int) *CephExporter {
 	c := &CephExporter{
 		collectors: []prometheus.Collector{
 			collectors.NewClusterUsageCollector(conn, cluster),
 			collectors.NewPoolUsageCollector(conn, cluster),
-			collectors.NewPoolInfoCollector(conn, cluster),
 			collectors.NewClusterHealthCollector(conn, cluster),
 			collectors.NewMonitorCollector(conn, cluster),
 			collectors.NewOSDCollector(conn, cluster),
@@ -107,6 +106,24 @@ func NewCephExporter(conn *rados.Conn, cluster string, config string, rgwMode in
 
 	default:
 		log.Printf("RGW Collector Disabled do to invalid mode (%d)\n", rgwMode)
+	}
+
+	switch mdsMode {
+	case collectors.MDSModeForeground:
+		c.collectors = append(c.collectors,
+			collectors.NewMDSCollector(cluster, config, false),
+		)
+
+	case collectors.MDSModeBackground:
+		c.collectors = append(c.collectors,
+			collectors.NewMDSCollector(cluster, config, true),
+		)
+
+	case collectors.MDSModeDisabled:
+		// nothing to do
+
+	default:
+		log.Printf("MDS Collector Disabled do to invalid mode (%d)\n", mdsMode)
 	}
 
 	return c
@@ -140,6 +157,8 @@ func main() {
 		cephUser    = flag.String("ceph.user", "admin", "Ceph user to connect to cluster.")
 
 		rgwMode = flag.Int("rgw.mode", 0, "Enable collection of stats from RGW (0:disabled 1:enabled 2:background)")
+		// add by andy
+		mdsMode = flag.Int("mds.mode", 0, "Enable collection of stats from MDS (0:disabled 1:enabled 2:background)")
 
 		exporterConfig = flag.String("exporter.config", "/etc/ceph/exporter.yml", "Path to ceph exporter config.")
 	)
@@ -171,7 +190,8 @@ func main() {
 			defer conn.Shutdown()
 
 			log.Printf("Starting ceph exporter for cluster: %s", cluster.ClusterLabel)
-			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel, cluster.ConfigFile, *rgwMode))
+			// add by andy
+			err = prometheus.Register(NewCephExporter(conn, cluster.ClusterLabel, cluster.ConfigFile, *rgwMode, *mdsMode))
 			if err != nil {
 				log.Fatalf("cannot export cluster: %s error: %v", cluster.ClusterLabel, err)
 			}
@@ -196,7 +216,8 @@ func main() {
 		}
 		defer conn.Shutdown()
 
-		prometheus.MustRegister(NewCephExporter(conn, defaultCephClusterLabel, defaultCephConfigPath, *rgwMode))
+		// add by andy
+		prometheus.MustRegister(NewCephExporter(conn, defaultCephClusterLabel, defaultCephConfigPath, *rgwMode, *mdsMode))
 	}
 
 	http.Handle(*metricsPath, promhttp.Handler())
