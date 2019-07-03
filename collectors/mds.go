@@ -1,11 +1,16 @@
 package collectors
 
 import (
-	"fmt"
 	"log"
 	"os/exec"
 	"strings"
 	"time"
+        "fmt"
+	"os"
+	"bufio"
+	"io/ioutil"
+	"encoding/json"
+	"strconv"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -15,6 +20,16 @@ const (
 	MDSModeForeground = 1
 	MDSModeBackground = 2
 )
+
+type OpenFiles struct {
+	Stat     []Stat `json:"stat"`    
+	Noparent string `json:"noparent"`
+}
+
+type Stat struct {
+	Openfile string `json:"openfile"`
+	Dirname  string `json:"dirname"` 
+}
 
 func mdsGetStatus(config string) ([]string, error) {
 	var (
@@ -27,10 +42,30 @@ func mdsGetStatus(config string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	
 	str := strings.Trim(string(data), "\n")
-	out = strings.Split(str, " ")
+  	out = strings.Split(str," ")
 	return out, nil
+}
+
+func mdsGetOpenfiles(config string) (OpenFiles, error) {
+	var openFiles OpenFiles
+	checkupFile, err := os.Open(config)
+  	if err != nil {
+    		log.Printf("cannot open file: %s", err.Error())
+    		return openFiles, err
+  	}
+  	defer checkupFile.Close()
+
+  	checkupReader := bufio.NewReader(checkupFile)
+  	checkupContent, _ := ioutil.ReadAll(checkupReader)
+
+  	if err = json.Unmarshal(checkupContent, &openFiles); err != nil {
+    		log.Printf("json unmarshal failed: %s", err.Error())
+    		return openFiles, err
+  	}
+	
+	return openFiles,nil
 }
 
 type MDSCollector struct {
@@ -39,8 +74,11 @@ type MDSCollector struct {
 
 	// ceph mds daemon status
 	MdsStatus *prometheus.GaugeVec
+	// add mds open file statistics
+	MdsOpenFiles *prometheus.GaugeVec
 
 	getMDSStatus func(string) ([]string, error)
+	getMDSOpen   func(string) (OpenFiles, error)
 }
 
 func NewMDSCollector(cluster string, config string, background bool) *MDSCollector {
@@ -50,6 +88,7 @@ func NewMDSCollector(cluster string, config string, background bool) *MDSCollect
 		config:       config,
 		background:   background,
 		getMDSStatus: mdsGetStatus,
+		getMDSOpen:   mdsGetOpenfiles,
 
 		MdsStatus: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -59,6 +98,15 @@ func NewMDSCollector(cluster string, config string, background bool) *MDSCollect
 				ConstLabels: labels,
 			},
 			[]string{"hostname"},
+		),
+		MdsOpenFiles: prometheus.NewGaugeVec(
+	                        prometheus.GaugeOpts{
+                                Namespace:   cephNamespace,
+                                Name:        "mds_open_files",
+                                Help:        "MDS Deamon open files",
+                                ConstLabels: labels,
+                        },
+                        []string{"dirname"},
 		),
 	}
 
@@ -72,6 +120,7 @@ func NewMDSCollector(cluster string, config string, background bool) *MDSCollect
 func (r *MDSCollector) collectorList() []prometheus.Collector {
 	return []prometheus.Collector{
 		r.MdsStatus,
+		r.MdsOpenFiles,
 	}
 }
 
@@ -90,14 +139,29 @@ func (r *MDSCollector) collect() error {
 	if err != nil {
 		r.MdsStatus.WithLabelValues().Set(float64(0))
 		return err
-	}
+	}	
 
 	if strings.Contains(data[0], "active") {
-		r.MdsStatus.WithLabelValues(data[1]).Set(float64(1))
+  		r.MdsStatus.WithLabelValues(data[1]).Set(float64(1))
 	} else {
 		r.MdsStatus.WithLabelValues(data[1]).Set(float64(0))
 	}
 
+	openFiles, err := r.getMDSOpen("/tmp/mds_openfiles_out")
+	if err != nil {
+		r.MdsOpenFiles.WithLabelValues().Set(float64(0))
+		return err
+	}
+
+	
+	for _, value := range openFiles.Stat {
+		num, err := strconv.Atoi(value.Openfile)
+		if err != nil {
+			r.MdsOpenFiles.WithLabelValues(value.Dirname).Set(float64(0))
+		} else {
+			r.MdsOpenFiles.WithLabelValues(value.Dirname).Set(float64(num))
+		}
+	}
 	return nil
 }
 
